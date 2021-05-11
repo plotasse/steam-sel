@@ -72,3 +72,9 @@ startup command. Or your favorite game devs do. Whatever, you've been warned.
 - The idea could probably be expanded upon to provide custom commands and whatnot.
 
 - Also it should not conflict with your other launch options, whatever, enjoy.
+
+## What about the stupid name
+
+Maybe it means Steam External Launcher. Or maybe it's just the french for salt
+because I might be salty for having to write 500 lines of code to run a game
+without using the mouse.
