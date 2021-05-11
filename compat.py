@@ -161,7 +161,8 @@ def get_commands(appid):
     ignored_betakey = {}
     ignored_oslist = {}
     ignored_osarch = {}
-    for launch_config in appinfo[b"config"][b"launch"].values():
+    for launch_config_id, launch_config in appinfo[b"config"][b"launch"].items():
+        launch_config_id = int(launch_config_id)
         # Ignore launch entries associated with beta keys
         # TODO support betas ?
         try:
@@ -205,7 +206,7 @@ def get_commands(appid):
             cmd += " " + launch_config[b"arguments"].decode()
         if compat_app:
             cmd = compat_app.compat_tool.get_command("waitforexitandrun", cmd)
-        yield oslist, osarch, option_type, option_description
+        yield launch_config_id, oslist, osarch, option_type, option_description
         yield cmd
         yield ""
     if ignored_betakey:
