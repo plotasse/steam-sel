@@ -242,8 +242,10 @@ class LaunchEntry:
         # Build the command.
         self.cmd = escape_path(app.installdir + "/" + self.executable)
 
+        # It seems we have to escape the backslashes.
+        # I would like that to be the last stealth idiocy I have to deal with.
         if b"arguments" in launch_config:
-            self.cmd += " " + launch_config[b"arguments"].decode()
+            self.cmd += " " + launch_config[b"arguments"].decode().replace("\\","\\\\")
 
         # I have no idea what other verbs there may be. Steam seems to only use this one.
         if compat_tool:
