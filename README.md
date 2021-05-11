@@ -7,6 +7,14 @@ Vulkan version, or a config tool, without going through the Steam UI ? Well,
 you can't. Not without this horrendous script. If you're interested, please
 proceed below.
 
+## Disclaimer
+
+You know how Steam randomly deletes files from people's disks ? Well this
+probably will do so as well. Or maybe not. The only written files should be in
+`$XDG_RUNTIME_DIR`, so as long as it's set (and it *should* check for it to be
+set), everything should be fine. Unless the script generates a faulty game
+startup command. Or your favorite game devs do. Whatever, you've been warned.
+
 ## Install
 
 - Put steam-sel-loader in your path, and add it to the launch options for the
