@@ -166,7 +166,6 @@ def get_commands(appid):
 
     print("! launch_oslist =", launch_oslist)
 
-    # TODO working directory
     # TODO custom launch options
     appinfo = appinfo_decoder.decode(appid)["sections"][b"appinfo"]
 
@@ -210,8 +209,21 @@ def get_commands(appid):
         option_description = launch_config[b"description"].decode() if b"description" in launch_config else app.name
 
         executable = launch_config[b"executable"].decode()
+        try:
+            workingdir = launch_config[b"workingdir"].decode()
+        except KeyError:
+            workingdir = None
+
+        # When running windows software on anything but windows, replace backslashes with the regular ones
         if "windows" in (oslist or launch_oslist) and current_os != "windows":
-            executable = executable.replace("\\","/")
+            executable = executable.replace("\\", "/")
+            if workingdir:
+                workingdir = workingdir.replace("\\", "/")
+
+        if workingdir:
+            workingdir = app.installdir + "/" + workingdir
+        else:
+            workingdir = app.installdir
 
         cmd = escape_path(app.installdir + "/" + executable)
         if b"arguments" in launch_config:
@@ -219,6 +231,7 @@ def get_commands(appid):
         if compat_tool:
             cmd = compat_tool.get_command("waitforexitandrun", cmd)
         yield launch_config_id, oslist, osarch, option_type, option_description
+        yield "cd " + escape_path(workingdir)
         yield cmd
         yield ""
     if ignored_betakey:
