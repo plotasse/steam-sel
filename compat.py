@@ -3,7 +3,7 @@ import os
 import re
 from xdg.BaseDirectory import xdg_data_home
 from steamfiles import acf
-import appinfo2 as appinfo
+from appinfolazy import AppinfoLazyDecoder
 
 #
 # CONFIGURATION
@@ -40,7 +40,7 @@ apps = {}
 # Create appinfo.vdf decoder
 with open(main_library + "/appcache/appinfo.vdf", "rb") as appinfo_file:
     appinfo_raw = appinfo_file.read()
-appinfo_decoder = appinfo.AppinfoLazyDecoder(appinfo_raw)
+appinfo_decoder = AppinfoLazyDecoder(appinfo_raw)
 
 # Load the main Steam config file. It contains the game <-> compatibility tool mappings.
 with open(main_library + "/config/config.vdf", "r") as config_file:

@@ -3,7 +3,7 @@
 import struct
 from collections import namedtuple
 
-__all__ = ('load', 'loads', 'dump', 'dumps')
+__all__ = ('AppinfoLazyDecoder')
 
 VDF_VERSIONS = [0x07564426, 0x07564427]
 VDF_UNIVERSE = 0x00000001
@@ -19,53 +19,6 @@ TYPE_INT64 = b'\x07'
 
 # VDF has variable length integers (32-bit and 64-bit).
 Integer = namedtuple('Integer', ('size', 'data'))
-
-
-def load(fp, wrapper=dict, apps=None):
-    """
-    Loads the contents of an Appinfo file into a Python object.
-    :param fp: A file object.
-    :param wrapper: A wrapping object for key-value pairs.
-    :param apps: A set of apps to load, None to read the whole file.
-    :return: An Ordered Dictionary with Appinfo data.
-    """
-    return loads(fp.read(), wrapper=wrapper, apps=apps)
-
-
-def loads(data, wrapper=dict, apps=None):
-    """
-    Loads Appinfo content into a Python object.
-    :param data: A byte-like object with the contents of an Appinfo file.
-    :param wrapper: A wrapping object for key-value pairs.
-    :param apps: A set of apps to load, None to read the whole file.
-    :return: An Ordered Dictionary with Appinfo data.
-    """
-    if not isinstance(data, (bytes, bytearray)):
-        raise TypeError('can only load a bytes-like object as an Appinfo but got ' + type(data).__name__)
-
-    return AppinfoDecoder(data, wrapper=wrapper, apps=apps).decode()
-
-
-def dump(obj, fp):
-    """
-    Serializes a dictionary into Appinfo data and writes it to a file.
-    :param obj: A dictionary to serialize.
-    :param fp: A file object.
-    """
-    fp.write(dumps(obj))
-
-
-def dumps(obj):
-    """
-    Serializes a dictionary into Appinfo data.
-    :param obj: A dictionary to serialize.
-    :return:
-    """
-    if not isinstance(obj, dict):
-        raise TypeError('can only dump a dictionary as an Appinfo but got ' + type(obj).__name__)
-
-    return b''.join(AppinfoEncoder(obj).iter_encode())
-
 
 class AppinfoLazyDecoder:
 
@@ -235,87 +188,3 @@ class AppinfoLazyDecoder:
     @staticmethod
     def _unknown_value_type():
         raise ValueError("Cannot parse the provided data type.")
-
-
-class AppinfoEncoder:
-
-    def __init__(self, data):
-        self.data = data
-        self.version = self.data[b'__vdf_version']
-
-    def iter_encode(self):
-        # VDF Header
-        yield struct.pack('<2I', self.data[b'__vdf_version'], self.data[b'__vdf_universe'])
-
-        for app_id, app_data in self.data.items():
-            # Don't encode internal variables.
-            if app_id in (b'__vdf_version', b'__vdf_universe'):
-                continue
-
-            # Game Header
-            yield struct.pack('<I', app_id)
-            yield struct.pack('<3IQ20sI', app_data['size'], app_data['state'],
-                              app_data['last_update'], app_data['access_token'],
-                              app_data['checksum'], app_data['change_number'])
-
-            # Once again, new VDF format is much simpler.
-            if self.version == 0x07564427:
-                yield from self.iter_encode_section(app_data['sections'])
-            else:
-                for section_name, section_data in app_data['sections'].items():
-                    # Delete '_section_id' from the dictionary, as it was placed there by
-                    # the decoding class only to preserve the section id number.
-                    section_id = section_data[b'__steamfiles_section_id']
-
-                    yield struct.pack('<H', section_id)
-                    yield self.encode_string(section_name)
-                    yield from self.iter_encode_section(section_data, root_section=True)
-
-                yield LAST_SECTION
-
-        yield LAST_APP
-
-    def iter_encode_section(self, section_data, root_section=False):
-        for key, value in section_data.items():
-            if key == b'__steamfiles_section_id':
-                continue
-
-            # Encode different types using their corresponding generators.
-            if isinstance(value, dict):
-                yield TYPE_SECTION
-                yield self.encode_string(key)
-                yield from self.iter_encode_section(value)
-            elif isinstance(value, bytes):
-                yield TYPE_STRING
-                yield self.encode_string(key)
-                yield self.encode_string(value)
-            elif isinstance(value, Integer):
-                yield from self.encode_integer(key, value)
-            else:
-                raise TypeError('Unknown value type ' + type(value).__name__)
-
-        yield SECTION_END
-        if root_section:
-            # There's one additional 0x08 byte at the end of
-            # the root subsection.
-            yield SECTION_END
-
-    def encode_integer(self, key, value):
-        if value.size == 32:
-            yield TYPE_INT32
-            yield self.encode_string(key)
-            yield struct.pack('<I', value.data)
-        elif value.size == 64:
-            yield TYPE_INT64
-            yield self.encode_string(key)
-            yield struct.pack('<Q', value.data)
-        else:
-            raise TypeError('Unknown type of an Integer')
-
-    @staticmethod
-    def encode_string(string):
-        # A string with a NUL-byte at the end.
-        # Example format for 'gameid': "7s".
-        # The bytes packed with above format: b'gameid\x00'.
-        fmt = str(len(string) + 1) + 's'
-        return struct.pack(fmt, string)
