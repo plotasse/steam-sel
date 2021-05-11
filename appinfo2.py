@@ -1,6 +1,5 @@
 # This is appinfo.py from steamfiles (https://github.com/leovp/steamfiles),
-# with small modifications to only parse the required parts.
-# TODO see if mergeable
+# with a few modifications to parse the file lazily as apps are requested.
 import struct
 from collections import namedtuple
 
@@ -68,11 +67,12 @@ def dumps(obj):
     return b''.join(AppinfoEncoder(obj).iter_encode())
 
 
-class AppinfoDecoder:
+class AppinfoLazyDecoder:
 
-    def __init__(self, data, wrapper=dict, apps=None):
+    def __init__(self, data, wrapper=dict):
         self.wrapper = wrapper        # Wrapping container
-        self.apps = apps              # Apps to load
+        self.app_headers = {}         # AppID to parsed header
+        self.app_offsets = {}         # AppID to memory offset
         self.data = memoryview(data)  # Incoming data (bytes)
         self.offset = 0               # Parsing offset
 
@@ -91,28 +91,30 @@ class AppinfoDecoder:
             0x07: self.read_int64,
         }
 
-    def decode(self):
-        parsed = self.wrapper()
+        self.build_app_offsets()
+
+    def build_app_offsets(self):
+        self.parsed = self.wrapper()
 
         # These should always be present.
         header_fields = ('version', 'universe')
-        header = self.wrapper((zip(header_fields, self.read_vdf_header())))
-        if len(header) != len(header_fields):
+        self.header = self.wrapper((zip(header_fields, self.read_vdf_header())))
+        if len(self.header) != len(header_fields):
             raise ValueError('Not all VDF headers are present, only found {num}: {header!r}'.format(
                 num=len(header),
-                header=header,
+                header=self.header,
             ))
 
         # Currently these are the only possible values for
         # a valid appinfo.vdf
-        if header['version'] not in VDF_VERSIONS:
-            raise ValueError('Unknown VDF_VERSION: 0x{0:08x}'.format(header['version']))
+        if self.header['version'] not in VDF_VERSIONS:
+            raise ValueError('Unknown VDF_VERSION: 0x{0:08x}'.format(self.header['version']))
 
-        if header['universe'] != VDF_UNIVERSE:
-            raise ValueError('Unknown VDF_UNIVERSE: 0x{0:08x}'.format(header['version']))
+        if self.header['universe'] != VDF_UNIVERSE:
+            raise ValueError('Unknown VDF_UNIVERSE: 0x{0:08x}'.format(self.header['version']))
 
         # Store VDF_VERSION and VDF_UNIVERSE internally, as it's needed for proper encoding.
-        parsed[b'__vdf_version'], parsed[b'__vdf_universe'] = header['version'], header['universe']
+        self.parsed[b'__vdf_version'], self.parsed[b'__vdf_universe'] = self.header['version'], self.header['universe']
 
         # Parsing applications
         app_fields = ('size', 'state', 'last_update', 'access_token', 'checksum', 'change_number')
@@ -131,13 +133,18 @@ class AppinfoDecoder:
                     header=app,
                 ))
 
-            # Skip unwanted apps
-            if self.apps and app_id not in self.apps:
-                self.offset += app['size'] - self.size_game_header + 4
-                continue
+            # Store header and offset, then go to the next app
+            self.app_headers[app_id] = app
+            self.app_offsets[app_id] = self.offset
+            self.offset += app['size'] - self.size_game_header + 4
 
+    def decode(self, app_id):
+        if app_id not in self.parsed:
+            print("\033[32m++ AppinfoLazyDecoder: parsing", app_id,"\033[0m")
+            app = self.app_headers[app_id]
+            self.offset = self.app_offsets[app_id]
             # The newest VDF format is a bit simpler to parse.
-            if header['version'] == 0x07564427:
+            if self.header['version'] == 0x07564427:
                 app['sections'] = self.parse_subsections()
             else:
                 app['sections'] = self.wrapper()
@@ -157,9 +164,11 @@ class AppinfoDecoder:
                     # corresponding IDs, we are going to store the IDs with all the data.
                     app['sections'][section_name][b'__steamfiles_section_id'] = section_id
 
-            parsed[app_id] = app
+            self.parsed[app_id] = app
+        else:
+            print("\033[34m++ AppinfoLazyDecoder: retrieving", app_id,"\033[0m")
 
-        return parsed
+        return self.parsed[app_id]
 
     def parse_subsections(self, root_section=False):
         subsection = self.wrapper()

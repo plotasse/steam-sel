@@ -30,27 +30,21 @@ steamplay_manifests_appid = 891390
 # END CONFIGURATION
 #
 
-libraries = [main_library]
-
-# Try and find other library folders.
-# I think they are also available in main_library/config/config.vdf.
-try:
-    with open(main_library + "/steamapps/libraryfolders.vdf") as f:
-        d = acf.load(f)
-        for k, v in d["LibraryFolders"].items():
-            if k.isdigit():
-                libraries.append(v)
-except FileNotFoundError:
-    print("libraryfolders.vdf not found")
-
-print(libraries)
-
-apps = {}
-
 # This is horrendous, but Steam apparently behaves this way,
 # so I guess we will have to do the same. I'm deeply sorry.
 def escape_path(path):
     return "'" + path.replace("'","'\\''") + "'"
+
+apps = {}
+
+# Create appinfo.vdf decoder
+with open(main_library + "/appcache/appinfo.vdf", "rb") as appinfo_file:
+    appinfo_raw = appinfo_file.read()
+appinfo_decoder = appinfo.AppinfoLazyDecoder(appinfo_raw)
+
+# Load the main Steam config file. It contains the game <-> compatibility tool mappings.
+with open(main_library + "/config/config.vdf", "r") as config_file:
+    config_data = acf.load(config_file)
 
 class CompatTool:
     def __init__(self, app):
@@ -89,6 +83,25 @@ class App:
     def __repr__(self):
         return "<App, appid=" + str(self.appid) + ", name=" + self.name + ", installdir=" + self.installdir + ">"
 
+#
+# Find Steam libraries
+#
+
+libraries = [main_library]
+
+# Try and find other library folders.
+# I think they are also available in main_library/config/config.vdf.
+try:
+    with open(main_library + "/steamapps/libraryfolders.vdf") as f:
+        d = acf.load(f)
+        for k, v in d["LibraryFolders"].items():
+            if k.isdigit():
+                libraries.append(v)
+except FileNotFoundError:
+    print("libraryfolders.vdf not found")
+
+print(libraries)
+
 manifest_re = re.compile("^appmanifest_([0-9]+)\\.acf$")
 for l in libraries:
     steamapps = l + "/steamapps"
@@ -98,24 +111,9 @@ for l in libraries:
             appid = int(m.group(1))
             apps[appid] = App(steamapps, appid)
 
-# Load the apps we need from appinfo.vdf
-apps_to_load = {steamplay_manifests_appid}
-
-# TODO use the requested app
-apps_to_load = apps_to_load.union({211820,1566410, 1145360, 70300, 400})
-
 for appid, app in apps.items():
     if app.compat_tool:
         print("Found compatibility tool:", app)
-        # TODO only load the compatibility tool associated with the requested app
-        apps_to_load.add(appid)
-
-with open(main_library + "/appcache/appinfo.vdf", "rb") as appinfo_file:
-    appinfo_data = appinfo.load(appinfo_file, apps=apps_to_load)
-
-# Load the main Steam config file. It contains the game <-> compatibility tool mappings.
-with open(main_library + "/config/config.vdf", "r") as config_file:
-    config_data = acf.load(config_file)
 
 def parse_oslist(oslist):
     return set(oslist.split(",")) if oslist else set()
@@ -127,10 +125,10 @@ def get_compat_tool_name(appid):
         return None
 
 def get_compat_tool_appinfo(name):
-    return appinfo_data[steamplay_manifests_appid]["sections"][b"appinfo"][b"extended"][b"compat_tools"][name.encode()]
+    return appinfo_decoder.decode(steamplay_manifests_appid)["sections"][b"appinfo"][b"extended"][b"compat_tools"][name.encode()]
 
 def get_compat_tool_appid_by_name(name):
-    return int(get_compat_tool_appinfo(name)[b"appid"][1]) if name else None
+    return int(get_compat_tool_appinfo(name)[b"appid"].data) if name else None
 
 def get_commands(appid):
     app = apps[appid]
@@ -160,7 +158,7 @@ def get_commands(appid):
     # TODO working directory
     # TODO parse os, architecture, and find correct launch config instead of using b"0"
     # TODO custom launch options
-    appinfo = appinfo_data[appid]["sections"][b"appinfo"]
+    appinfo = appinfo_decoder.decode(appid)["sections"][b"appinfo"]
 
     ignored_betakey = {}
     ignored_oslist = {}
