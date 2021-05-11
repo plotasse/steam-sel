@@ -73,7 +73,7 @@ class App:
             self.appstate = acf.load(appmanifest_file)["AppState"]
 
         self.name = self.appstate["name"]
-        self.installdir = steamapps + "/common/" + self.appstate["installdir"]
+        self.installdir = os.path.realpath(steamapps + "/common/" + self.appstate["installdir"])
 
         try:
             self.compat_tool = CompatTool(self)
@@ -143,7 +143,7 @@ def get_commands(appid):
     launch_oslist = {current_os}
     if compat_app:
         # FIXME this is ugly. this data should be in CompatTool.
-        # but...... appinfo is not loaded yet when CompatTools are made.
+        # but...... appinfo is indexed by compat tool name, and CompatTool does not know its own name
         compat_appinfo = get_compat_tool_appinfo(compat_name)
         compat_from_oslist = parse_oslist(compat_appinfo[b"from_oslist"].decode())
         compat_to_oslist = parse_oslist(compat_appinfo[b"to_oslist"].decode())
@@ -154,9 +154,7 @@ def get_commands(appid):
 
     print("! launch_oslist =", launch_oslist)
 
-    # TODO replace backslashes in executable if windows
     # TODO working directory
-    # TODO parse os, architecture, and find correct launch config instead of using b"0"
     # TODO custom launch options
     appinfo = appinfo_decoder.decode(appid)["sections"][b"appinfo"]
 
@@ -198,7 +196,11 @@ def get_commands(appid):
         option_type = launch_config[b"type"].decode() if b"type" in launch_config else "default"
         option_description = launch_config[b"description"].decode() if b"description" in launch_config else app.name
 
-        cmd = escape_path(app.installdir + "/" + launch_config[b"executable"].decode())
+        executable = launch_config[b"executable"].decode()
+        if "windows" in (oslist or launch_oslist) and current_os != "windows":
+            executable = executable.replace("\\","/")
+
+        cmd = escape_path(app.installdir + "/" + executable)
         if b"arguments" in launch_config:
             cmd += " " + launch_config[b"arguments"].decode()
         if compat_app:
