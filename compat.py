@@ -46,6 +46,44 @@ appinfo_decoder = AppinfoLazyDecoder(appinfo_raw)
 with open(main_library + "/config/config.vdf", "r") as config_file:
     config_data = acf.load(config_file)
 
+# Load the compatibility tool name <-> appid mappings.
+compat_tools_info = appinfo_decoder.decode(steamplay_manifests_appid)["sections"][b"appinfo"][b"extended"][b"compat_tools"]
+compat_appid_to_name = {}
+compat_name_to_appid = {}
+for name, data in compat_tools_info.items():
+    name = name.decode()
+    appid = data[b"appid"].data
+    compat_appid_to_name[appid] = name
+    compat_name_to_appid[name] = appid
+
+print(compat_appid_to_name)
+
+def get_compat_tool_appinfo(name):
+    return compat_tools_info[name.encode()]
+
+def parse_oslist(oslist):
+    return set(oslist.split(",")) if oslist else set()
+
+class App:
+    def __init__(self, steamapps, appid):
+        self.appid = appid
+
+        with open(steamapps + "/appmanifest_" + str(self.appid) + ".acf") as appmanifest_file:
+            self.appstate = acf.load(appmanifest_file)["AppState"]
+
+        self.name = self.appstate["name"]
+        self.installdir = os.path.realpath(steamapps + "/common/" + self.appstate["installdir"])
+
+        self.compat_tool = None
+        if self.appid in compat_appid_to_name:
+            try:
+                self.compat_tool = CompatTool(self)
+            except FileNotFoundError:
+                print(self.appid, self.name, "is a compatibility tool but has no toolmanifest.vdf")
+
+    def __repr__(self):
+        return "<App, appid=" + str(self.appid) + ", name=" + self.name + ", installdir=" + self.installdir + ">"
+
 class CompatTool:
     def __init__(self, app):
         self.app = app
@@ -59,29 +97,17 @@ class CompatTool:
         except KeyError:
             self.require_tool_appid = None
 
+        compat_appinfo = get_compat_tool_appinfo(compat_appid_to_name[self.app.appid])
+        self.from_oslist = parse_oslist(compat_appinfo[b"from_oslist"].decode())
+        self.to_oslist = parse_oslist(compat_appinfo[b"to_oslist"].decode())
+
     def get_command(self, verb, cmd):
         cmd = escape_path(self.app.installdir) + self.commandline.replace("%verb%", verb) + " " + cmd
+        # FIXME ? compatibility tool stacking ignores the lower {from,to}_oslist.
+        # Then again, I have no idea if Steam itself even cares.
         if self.require_tool_appid:
             cmd = apps[self.require_tool_appid].compat_tool.get_command(verb, cmd)
         return cmd
-
-class App:
-    def __init__(self, steamapps, appid):
-        self.appid = appid
-
-        with open(steamapps + "/appmanifest_" + str(self.appid) + ".acf") as appmanifest_file:
-            self.appstate = acf.load(appmanifest_file)["AppState"]
-
-        self.name = self.appstate["name"]
-        self.installdir = os.path.realpath(steamapps + "/common/" + self.appstate["installdir"])
-
-        try:
-            self.compat_tool = CompatTool(self)
-        except FileNotFoundError:
-            self.compat_tool = None
-
-    def __repr__(self):
-        return "<App, appid=" + str(self.appid) + ", name=" + self.name + ", installdir=" + self.installdir + ">"
 
 #
 # Find Steam libraries
@@ -115,42 +141,28 @@ for appid, app in apps.items():
     if app.compat_tool:
         print("Found compatibility tool:", app)
 
-def parse_oslist(oslist):
-    return set(oslist.split(",")) if oslist else set()
-
-def get_compat_tool_name(appid):
+def get_compat_tool_name_for_app(appid):
     try:
         return config_data['InstallConfigStore']['Software']['Valve']['Steam']['CompatToolMapping'][str(appid)]['name'] or None
     except KeyError:
         return None
 
-def get_compat_tool_appinfo(name):
-    return appinfo_decoder.decode(steamplay_manifests_appid)["sections"][b"appinfo"][b"extended"][b"compat_tools"][name.encode()]
-
-def get_compat_tool_appid_by_name(name):
-    return int(get_compat_tool_appinfo(name)[b"appid"].data) if name else None
-
 def get_commands(appid):
     app = apps[appid]
 
-    compat_name = get_compat_tool_name(appid)
-    compat_appid = get_compat_tool_appid_by_name(compat_name)
-    compat_app = apps.get(compat_appid)
+    compat_name = get_compat_tool_name_for_app(appid)
+    compat_appid = compat_name_to_appid.get(compat_name)
+    compat_tool = apps[compat_appid].compat_tool if compat_appid else None
 
     print(app)
     print(compat_name)
 
     launch_oslist = {current_os}
-    if compat_app:
-        # FIXME this is ugly. this data should be in CompatTool.
-        # but...... appinfo is indexed by compat tool name, and CompatTool does not know its own name
-        compat_appinfo = get_compat_tool_appinfo(compat_name)
-        compat_from_oslist = parse_oslist(compat_appinfo[b"from_oslist"].decode())
-        compat_to_oslist = parse_oslist(compat_appinfo[b"to_oslist"].decode())
-        if current_os not in compat_to_oslist:
+    if compat_tool:
+        if current_os not in compat_tool.to_oslist:
             print("WARNING: Current OS:", current_os, "is not supported by", compat_tool_name, compat_to_oslist)
 
-        launch_oslist = compat_from_oslist
+        launch_oslist = compat_tool.from_oslist
 
     print("! launch_oslist =", launch_oslist)
 
@@ -204,8 +216,8 @@ def get_commands(appid):
         cmd = escape_path(app.installdir + "/" + executable)
         if b"arguments" in launch_config:
             cmd += " " + launch_config[b"arguments"].decode()
-        if compat_app:
-            cmd = compat_app.compat_tool.get_command("waitforexitandrun", cmd)
+        if compat_tool:
+            cmd = compat_tool.get_command("waitforexitandrun", cmd)
         yield launch_config_id, oslist, osarch, option_type, option_description
         yield cmd
         yield ""
