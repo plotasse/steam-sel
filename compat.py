@@ -1,13 +1,16 @@
 #!/usr/bin/python3
 import os
 import sys
-import re
+
 from operator import attrgetter
+
+import re
+import json
+
+from xdg.BaseDirectory import xdg_data_home
 
 from appinfolazy import AppinfoLazyDecoder
 import vdf
-
-from xdg.BaseDirectory import xdg_data_home
 
 #
 # CONFIGURATION
@@ -182,9 +185,7 @@ def get_compat_tool_name_for_app(appid):
 # FIXME: appinfo should be embedded in app
 # also, we don't need to laod all apps, only the one requested + compatibility tools
 class LaunchEntry:
-    def __init__(self, app, appinfo, launch_config_id, launch_config, launch_oslist, compat_tool=None, launch_options = None):
-        self.id = launch_config_id
-
+    def __init__(self, app, appinfo, launch_config, launch_oslist, compat_tool=None, launch_options = None):
         self.type = launch_config[b"type"].decode() if b"type" in launch_config else "none"
 
         self.description = launch_config[b"description"].decode() if b"description" in launch_config else app.name
@@ -250,8 +251,7 @@ class LaunchEntry:
                 self.cmd = self.cmd + " " + launch_options
 
     def as_dict(self):
-        return { "id": self.id,
-                 "type": self.type,
+        return { "type": self.type,
                  "description": self.description,
                  "oslist": list(self.oslist),
                  "osarch": self.osarch,
@@ -264,7 +264,7 @@ class LaunchEntry:
     def __repr__(self):
         return repr(self.as_dict())
 
-def get_commands(appid):
+def get_commands(appid, get_all=False):
     app = apps[appid]
 
     compat_name = get_compat_tool_name_for_app(appid)
@@ -291,23 +291,27 @@ def get_commands(appid):
     ignored_oslist = {}
     ignored_osarch = {}
     for launch_config_id, launch_config in appinfo[b"config"][b"launch"].items():
-        launch_entry = LaunchEntry(app, appinfo, int(launch_config_id), launch_config, launch_oslist, compat_tool, launch_options)
+        launch_entry = LaunchEntry(app, appinfo, launch_config, launch_oslist, compat_tool, launch_options)
 
-        # Ignore launch entries associated with beta keys
+        # Ignore launch entries associated with beta keys.
         # TODO support betas ?
-        if launch_entry.betakey:
+        if not get_all and launch_entry.betakey:
             ignored_betakey[launch_entry.betakey] = ignored_betakey.get(launch_entry.betakey, 0) + 1
             continue
 
-        if launch_entry.oslist and not launch_entry.oslist & launch_oslist:
+        # Ignore entries not corresponding to the launch OS (which may be altered by a compatibility tool).
+        if not get_all and launch_entry.oslist and not launch_entry.oslist & launch_oslist:
             ignored_oslist[",".join(launch_entry.oslist)] = ignored_oslist.get(",".join(launch_entry.oslist), 0) + 1
             continue
 
-        if launch_entry.osarch is not None and launch_entry.osarch != current_osarch:
+        # Ignore entries from the wrong architecture. Yes, this includes 32-bit ones on a 64-bit OS.
+        # Yes, many games including a 32-bit build usually have a "64-bit" entry to circumvent this.
+        # Thanks Valve.
+        if not get_all and launch_entry.osarch is not None and launch_entry.osarch != current_osarch:
             ignored_osarch[launch_entry.osarch] = ignored_osarch.get(launch_entry.osarch, 0) + 1
             continue
 
-        yield launch_entry
+        yield (int(launch_config_id), launch_entry)
 
     if ignored_betakey:
         print("Ignored entries with beta keys: " + repr(ignored_betakey))
@@ -316,7 +320,10 @@ def get_commands(appid):
     if ignored_osarch:
         print("Ignored entries with arch: " + repr(ignored_osarch))
 
-import json
-if len(sys.argv) == 2:
-    cmds = get_commands(int(sys.argv[1]))
-    print(json.dumps([cmd.as_dict() for cmd in cmds]))
+if __name__ == "__main__":
+    if len(sys.argv) == 2:
+        cmds = get_commands(int(sys.argv[1]))
+        print(json.dumps(dict([(k, v.as_dict()) for k,v in cmds])))
+    elif len(sys.argv) == 3:
+        cmds = dict(get_commands(int(sys.argv[1])))
+        print(json.dumps(cmds[int(sys.argv[2])].as_dict()))
