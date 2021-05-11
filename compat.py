@@ -1,9 +1,13 @@
 #!/usr/bin/python3
 import os
+import sys
 import re
-from xdg.BaseDirectory import xdg_data_home
-import vdf
+from operator import attrgetter
+
 from appinfolazy import AppinfoLazyDecoder
+import vdf
+
+from xdg.BaseDirectory import xdg_data_home
 
 #
 # CONFIGURATION
@@ -107,7 +111,7 @@ class App:
                 print(self.appid, self.name, "is a compatibility tool but has no toolmanifest.vdf")
 
     def __repr__(self):
-        return "\033[35m<App, name=\033[33m" + self.name + "\033[35m, appid=" + str(self.appid) + ", installdir=" + self.installdir + ">\033[0m"
+        return "\033[35m<App " + str(self.appid) + ":\tname=\033[33m" + self.name + "\033[35m, installdir=" + self.installdir + ">\033[0m"
 
 class CompatTool:
     def __init__(self, app):
@@ -165,6 +169,9 @@ for l in libraries:
 for appid, app in apps.items():
     if app.compat_tool:
         print("Found compatibility tool:", app)
+
+for app in sorted(apps.values(), key=attrgetter("name")):
+    print(app)
 
 def get_compat_tool_name_for_app(appid):
     try:
@@ -262,10 +269,14 @@ def get_commands(appid):
                 cmd = launch_options.replace("%command%", cmd)
             else:
                 cmd = cmd + launch_options
-        yield launch_config_id, oslist, osarch, option_type, option_description
-        yield "cd " + escape_path(workingdir)
-        yield cmd
-        yield ""
+        yield { "id": launch_config_id,
+                "type": option_type,
+                "description": option_description,
+                "oslist": oslist,
+                "osarch": osarch,
+                "workingdir": workingdir,
+                "cmd": cmd,
+                }
     if ignored_betakey:
         yield "Ignored entries with beta keys: " + repr(ignored_betakey)
     if ignored_oslist:
@@ -273,8 +284,8 @@ def get_commands(appid):
     if ignored_osarch:
         yield "Ignored entries with arch: " + repr(ignored_osarch)
 
-for i in [211820,1566410, 1145360, 70300, 400]:
-    cmds = get_commands(i)
+if len(sys.argv) == 2:
+    cmds = get_commands(int(sys.argv[1]))
     for cmd in cmds:
         print("->", cmd)
     print()
