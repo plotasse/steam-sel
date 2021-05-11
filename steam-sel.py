@@ -119,7 +119,7 @@ class App:
                 print(self.appid, self.name, "is a compatibility tool but has no toolmanifest.vdf")
 
     def __repr__(self):
-        return "\033[35m<App " + str(self.appid) + ":\tname=\033[33m" + self.name + "\033[35m, installdir=" + self.installdir + ">\033[0m"
+        return "\033[35m * \033[33m" + self.name + "\033[35m (" + str(self.appid) + "), " + self.installdir + "\033[0m"
 
 class CompatTool:
     def __init__(self, app):
@@ -190,7 +190,9 @@ def get_compat_tool_name_for_app(appid):
 # FIXME: appinfo should be embedded in app
 # also, we don't need to laod all apps, only the one requested + compatibility tools
 class LaunchEntry:
-    def __init__(self, app, appinfo, launch_config, launch_oslist, compat_tool=None, launch_options = None):
+    def __init__(self, entry_id, app, appinfo, launch_config, launch_oslist, compat_tool=None, launch_options = None):
+        self.id = entry_id
+
         self.type = launch_config[b"type"].decode() if b"type" in launch_config else "none"
 
         self.description = launch_config[b"description"].decode() if b"description" in launch_config else app.name
@@ -258,7 +260,8 @@ class LaunchEntry:
                 self.cmd = self.cmd + " " + launch_options
 
     def as_dict(self):
-        return { "type": self.type,
+        return { "id": self.id,
+                 "type": self.type,
                  "description": self.description,
                  "oslist": list(self.oslist),
                  "osarch": self.osarch,
@@ -269,7 +272,8 @@ class LaunchEntry:
                  }
 
     def __repr__(self):
-        return repr(self.as_dict())
+        return self.id
+        #return repr(self.as_dict())
 
 def get_commands(appid, get_all=False):
     app = apps[appid]
@@ -298,7 +302,7 @@ def get_commands(appid, get_all=False):
     ignored_oslist = {}
     ignored_osarch = {}
     for launch_config_id, launch_config in appinfo[b"config"][b"launch"].items():
-        launch_entry = LaunchEntry(app, appinfo, launch_config, launch_oslist, compat_tool, launch_options)
+        launch_entry = LaunchEntry(int(launch_config_id), app, appinfo, launch_config, launch_oslist, compat_tool, launch_options)
 
         # Ignore launch entries associated with beta keys.
         # TODO support betas ?
@@ -332,6 +336,9 @@ if __name__ == "__main__":
         entries = get_commands(int(sys.argv[1]))
         print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
 
+        for entry_id, entry in entries:
+            print(entry)
+
     elif len(sys.argv) == 3:
         appid = int(sys.argv[1])
         launch_id = int(sys.argv[2])
@@ -352,4 +359,4 @@ if __name__ == "__main__":
                 entry.cmd,
                 '']))
         os.chmod(p, 0o755)
-        subprocess.run(["steam", "-applaunch", str(appid)])
+        #subprocess.run(["steam", "-applaunch", str(appid)])
