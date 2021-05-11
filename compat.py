@@ -2,7 +2,7 @@
 import os
 import re
 from xdg.BaseDirectory import xdg_data_home
-from steamfiles import acf
+import vdf
 from appinfolazy import AppinfoLazyDecoder
 
 #
@@ -26,6 +26,12 @@ current_osarch = 64
 # Change only if you know what you're doing. I don't.
 steamplay_manifests_appid = 891390
 
+# This is your user ID to be substituted in $main_library/userdata/<id>.
+# We need this because the launch options are stored below the userdata directory.
+# If set to None, the script will try to use the "MostRecent" user, which we read
+# from $main_library/config/loginusers.vdf
+steam_user_id = None
+
 #
 # END CONFIGURATION
 #
@@ -37,6 +43,21 @@ def escape_path(path):
 
 apps = {}
 
+# If steam_user_id is None, try to figure it out
+if steam_user_id is None:
+    with open(main_library + "/config/loginusers.vdf", "r") as loginusers_file:
+        loginusers = vdf.load(loginusers_file)
+    for userid, userdata in loginusers["users"].items():
+        if int(userdata["MostRecent"]) == 1:
+            # also we have to remove the higher 32 bits, for some reason
+            steam_user_id = int(userid) & (1 << 32) - 1
+            print(userid, userdata)
+
+print("steam_user_id =", steam_user_id)
+if type(steam_user_id) is not int:
+    print("steam_user_id is not an int, abort")
+    exit(1)
+
 # Create appinfo.vdf decoder
 with open(main_library + "/appcache/appinfo.vdf", "rb") as appinfo_file:
     appinfo_raw = appinfo_file.read()
@@ -44,7 +65,11 @@ appinfo_decoder = AppinfoLazyDecoder(appinfo_raw)
 
 # Load the main Steam config file. It contains the game <-> compatibility tool mappings.
 with open(main_library + "/config/config.vdf", "r") as config_file:
-    config_data = acf.load(config_file)
+    config_data = vdf.load(config_file)
+
+# Load the user config file. It contains the per-game launch options.
+with open(main_library + "/userdata/" + str(steam_user_id) + "/config/localconfig.vdf", "r") as user_config_file:
+    user_config = vdf.load(user_config_file)
 
 # Load the compatibility tool name <-> appid mappings.
 compat_tools_info = appinfo_decoder.decode(steamplay_manifests_appid)["sections"][b"appinfo"][b"extended"][b"compat_tools"]
@@ -69,7 +94,7 @@ class App:
         self.appid = appid
 
         with open(steamapps + "/appmanifest_" + str(self.appid) + ".acf") as appmanifest_file:
-            self.appstate = acf.load(appmanifest_file)["AppState"]
+            self.appstate = vdf.load(appmanifest_file)["AppState"]
 
         self.name = self.appstate["name"]
         self.installdir = os.path.realpath(steamapps + "/common/" + self.appstate["installdir"])
@@ -82,14 +107,14 @@ class App:
                 print(self.appid, self.name, "is a compatibility tool but has no toolmanifest.vdf")
 
     def __repr__(self):
-        return "<App, appid=" + str(self.appid) + ", name=" + self.name + ", installdir=" + self.installdir + ">"
+        return "\033[35m<App, name=\033[33m" + self.name + "\033[35m, appid=" + str(self.appid) + ", installdir=" + self.installdir + ">\033[0m"
 
 class CompatTool:
     def __init__(self, app):
         self.app = app
 
         with open(app.installdir + "/toolmanifest.vdf") as toolmanifest_file:
-            toolmanifest = acf.load(toolmanifest_file)["manifest"]
+            toolmanifest = vdf.load(toolmanifest_file)["manifest"]
 
         self.commandline = toolmanifest["commandline"]
         try:
@@ -119,7 +144,7 @@ libraries = [main_library]
 # I think they are also available in main_library/config/config.vdf.
 try:
     with open(main_library + "/steamapps/libraryfolders.vdf") as f:
-        d = acf.load(f)
+        d = vdf.load(f)
         for k, v in d["LibraryFolders"].items():
             if k.isdigit():
                 libraries.append(v)
@@ -166,7 +191,8 @@ def get_commands(appid):
 
     print("! launch_oslist =", launch_oslist)
 
-    # TODO custom launch options
+    launch_options = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"][str(appid)].get("LaunchOptions")
+    print("Launch options:", repr(launch_options))
     appinfo = appinfo_decoder.decode(appid)["sections"][b"appinfo"]
 
     ignored_betakey = {}
@@ -230,6 +256,12 @@ def get_commands(appid):
             cmd += " " + launch_config[b"arguments"].decode()
         if compat_tool:
             cmd = compat_tool.get_command("waitforexitandrun", cmd)
+
+        if launch_options:
+            if "%command%" in launch_options:
+                cmd = launch_options.replace("%command%", cmd)
+            else:
+                cmd = cmd + launch_options
         yield launch_config_id, oslist, osarch, option_type, option_description
         yield "cd " + escape_path(workingdir)
         yield cmd
