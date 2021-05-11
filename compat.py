@@ -179,6 +179,91 @@ def get_compat_tool_name_for_app(appid):
     except KeyError:
         return None
 
+# FIXME: appinfo should be embedded in app
+# also, we don't need to laod all apps, only the one requested + compatibility tools
+class LaunchEntry:
+    def __init__(self, app, appinfo, launch_config_id, launch_config, launch_oslist, compat_tool=None, launch_options = None):
+        self.id = launch_config_id
+
+        self.type = launch_config[b"type"].decode() if b"type" in launch_config else "none"
+
+        self.description = launch_config[b"description"].decode() if b"description" in launch_config else app.name
+
+        # Get the OS list from the launch config, if unavailable default to the app's.
+        try:
+            self.oslist = parse_oslist(launch_config[b"config"][b"oslist"].decode())
+        except KeyError:
+            self.oslist = parse_oslist(appinfo[b"common"][b"oslist"].decode())
+
+        # Same for the architecture.
+        try:
+            self.osarch = launch_config[b"config"][b"osarch"]
+        except KeyError:
+            self.osarch = appinfo[b"common"].get(b"osarch") or b""
+
+        # We need some more parsing, because some entries have it in a string, other in integer form.
+        if type(self.osarch) is bytes:
+            self.osarch = int(self.osarch) if self.osarch else None
+        else:
+            self.osarch = self.osarch.data
+
+        # Get the beta key, if any.
+        try:
+            self.betakey = launch_config[b"config"][b"betakey"].decode()
+        except KeyError:
+            self.betakey = None
+
+        # Get the working dir and executable name, which will be processed shortly after.
+        try:
+            self.workingdir = launch_config[b"workingdir"].decode()
+        except KeyError:
+            self.workingdir = None
+
+        self.executable = launch_config[b"executable"].decode()
+
+        # When running windows software on anything but windows, replace backslashes with the regular ones.
+        if "windows" in (self.oslist or launch_oslist) and current_os != "windows":
+            if self.workingdir:
+                self.workingdir = self.workingdir.replace("\\", "/")
+            self.executable = self.executable.replace("\\", "/")
+
+        # Prepend the app install dir to the working dir, and default to it.
+        if self.workingdir:
+            self.workingdir = app.installdir + "/" + self.workingdir
+        else:
+            self.workingdir = app.installdir
+
+        # Build the command.
+        self.cmd = escape_path(app.installdir + "/" + self.executable)
+
+        if b"arguments" in launch_config:
+            self.cmd += " " + launch_config[b"arguments"].decode()
+
+        # I have no idea what other verbs there may be. Steam seems to only use this one.
+        if compat_tool:
+            self.cmd = compat_tool.get_command("waitforexitandrun", self.cmd)
+
+        if launch_options:
+            if "%command%" in launch_options:
+                self.cmd = launch_options.replace("%command%", self.cmd)
+            else:
+                self.cmd = self.cmd + " " + launch_options
+
+    def as_dict(self):
+        return { "id": self.id,
+                 "type": self.type,
+                 "description": self.description,
+                 "oslist": list(self.oslist),
+                 "osarch": self.osarch,
+                 "betakey": self.betakey,
+                 "workingdir": self.workingdir,
+                 "executable": self.executable,
+                 "cmd": self.cmd,
+                 }
+
+    def __repr__(self):
+        return repr(self.as_dict())
+
 def get_commands(appid):
     app = apps[appid]
 
@@ -206,86 +291,32 @@ def get_commands(appid):
     ignored_oslist = {}
     ignored_osarch = {}
     for launch_config_id, launch_config in appinfo[b"config"][b"launch"].items():
-        launch_config_id = int(launch_config_id)
+        launch_entry = LaunchEntry(app, appinfo, int(launch_config_id), launch_config, launch_oslist, compat_tool, launch_options)
+
         # Ignore launch entries associated with beta keys
         # TODO support betas ?
-        try:
-            betakey = launch_config[b"config"][b"betakey"].decode()
-            ignored_betakey[betakey] = ignored_betakey.get(betakey, 0) + 1
-            continue
-        except KeyError:
-            pass
-        try:
-            oslist = parse_oslist(launch_config[b"config"][b"oslist"].decode())
-        except KeyError:
-            oslist = parse_oslist(appinfo[b"common"][b"oslist"].decode())
-
-        if oslist and not oslist & launch_oslist:
-            ignored_oslist[",".join(oslist)] = ignored_oslist.get(",".join(oslist), 0) + 1
+        if launch_entry.betakey:
+            ignored_betakey[launch_entry.betakey] = ignored_betakey.get(launch_entry.betakey, 0) + 1
             continue
 
-        try:
-            osarch = launch_config[b"config"][b"osarch"]
-        except KeyError:
-            osarch = appinfo[b"common"].get(b"osarch") or b""
-
-        if type(osarch) is bytes:
-            osarch = int(osarch) if osarch else None
-        else:
-            osarch = osarch.data
-
-        if osarch is not None and osarch != current_osarch:
-            ignored_osarch[osarch] = ignored_osarch.get(osarch, 0) + 1
+        if launch_entry.oslist and not launch_entry.oslist & launch_oslist:
+            ignored_oslist[",".join(launch_entry.oslist)] = ignored_oslist.get(",".join(launch_entry.oslist), 0) + 1
             continue
 
-        option_type = launch_config[b"type"].decode() if b"type" in launch_config else "default"
-        option_description = launch_config[b"description"].decode() if b"description" in launch_config else app.name
+        if launch_entry.osarch is not None and launch_entry.osarch != current_osarch:
+            ignored_osarch[launch_entry.osarch] = ignored_osarch.get(launch_entry.osarch, 0) + 1
+            continue
 
-        executable = launch_config[b"executable"].decode()
-        try:
-            workingdir = launch_config[b"workingdir"].decode()
-        except KeyError:
-            workingdir = None
+        yield launch_entry
 
-        # When running windows software on anything but windows, replace backslashes with the regular ones
-        if "windows" in (oslist or launch_oslist) and current_os != "windows":
-            executable = executable.replace("\\", "/")
-            if workingdir:
-                workingdir = workingdir.replace("\\", "/")
-
-        if workingdir:
-            workingdir = app.installdir + "/" + workingdir
-        else:
-            workingdir = app.installdir
-
-        cmd = escape_path(app.installdir + "/" + executable)
-        if b"arguments" in launch_config:
-            cmd += " " + launch_config[b"arguments"].decode()
-        if compat_tool:
-            cmd = compat_tool.get_command("waitforexitandrun", cmd)
-
-        if launch_options:
-            if "%command%" in launch_options:
-                cmd = launch_options.replace("%command%", cmd)
-            else:
-                cmd = cmd + launch_options
-        yield { "id": launch_config_id,
-                "type": option_type,
-                "description": option_description,
-                "oslist": oslist,
-                "osarch": osarch,
-                "workingdir": workingdir,
-                "cmd": cmd,
-                }
     if ignored_betakey:
-        yield "Ignored entries with beta keys: " + repr(ignored_betakey)
+        print("Ignored entries with beta keys: " + repr(ignored_betakey))
     if ignored_oslist:
-        yield "Ignored entries with OS: " + repr(ignored_oslist)
+        print("Ignored entries with OS: " + repr(ignored_oslist))
     if ignored_osarch:
-        yield "Ignored entries with arch: " + repr(ignored_osarch)
+        print("Ignored entries with arch: " + repr(ignored_osarch))
 
+import json
 if len(sys.argv) == 2:
     cmds = get_commands(int(sys.argv[1]))
-    for cmd in cmds:
-        print("->", cmd)
-    print()
+    print(json.dumps([cmd.as_dict() for cmd in cmds]))
