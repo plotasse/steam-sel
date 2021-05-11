@@ -1,13 +1,14 @@
 #!/usr/bin/python3
 import os
 import sys
+import subprocess
 
 from operator import attrgetter
 
 import re
 import json
 
-from xdg.BaseDirectory import xdg_data_home
+from xdg import BaseDirectory
 
 from appinfolazy import AppinfoLazyDecoder
 import vdf
@@ -17,7 +18,7 @@ import vdf
 #
 
 # Your main Steam installation.
-main_library = xdg_data_home + "/Steam"
+main_library = BaseDirectory.xdg_data_home + "/Steam"
 
 # Your OS, according to Steam.
 # Should be either linux, macos or windows.
@@ -38,6 +39,10 @@ steamplay_manifests_appid = 891390
 # If set to None, the script will try to use the "MostRecent" user, which we read
 # from $main_library/config/loginusers.vdf
 steam_user_id = None
+
+# This is the script name. It is used as a subdirectory of $XDG_RUNTIME_DIR
+# for storing temporary files. It must be the same in the corresponding loader script.
+script_name = "steam-sel"
 
 #
 # END CONFIGURATION
@@ -322,8 +327,27 @@ def get_commands(appid, get_all=False):
 
 if __name__ == "__main__":
     if len(sys.argv) == 2:
-        cmds = get_commands(int(sys.argv[1]))
-        print(json.dumps(dict([(k, v.as_dict()) for k,v in cmds])))
+        entries = get_commands(int(sys.argv[1]))
+        print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
+
     elif len(sys.argv) == 3:
-        cmds = dict(get_commands(int(sys.argv[1])))
-        print(json.dumps(cmds[int(sys.argv[2])].as_dict()))
+        appid = int(sys.argv[1])
+        launch_id = int(sys.argv[2])
+
+        entries = dict(get_commands(appid))
+        entry = entries[launch_id]
+
+        print(json.dumps(entry.as_dict()))
+
+        d = BaseDirectory.get_runtime_dir() + "/" + script_name
+        if not os.path.isdir(d):
+            os.mkdir(d)
+        p = d + "/" + str(appid)
+        with open(p, "w") as f:
+            f.write("\n".join([
+                "#!/bin/bash",
+                "cd " + escape_path(entry.workingdir),
+                entry.cmd,
+                '']))
+        os.chmod(p, 0o755)
+        subprocess.run(["steam", "-applaunch", str(appid)])

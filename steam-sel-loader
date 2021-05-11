@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Configuration
+script_name=steam-sel
+
+# Abort on any error
+set -e
+
+# Ensure we have a runtime directory
+test -n "$XDG_RUNTIME_DIR"
+
+# Ensure SteamAppId is an integer
+test "$SteamAppId" -eq "$SteamAppId"
+
+f="$XDG_RUNTIME_DIR/$script_name/$SteamAppId"
+
+echo "-- $0: f=$f"
+echo "-- $0: PID is $$"
+
+if [ -z "$_STEAM_SEL_DONE" -a -f "$f" ]
+then
+    echo "-- $0: overriding command with $f which contains:"
+    cat "$f"
+    _STEAM_SEL_DONE=1 exec "$f"
+else
+    echo "-- $0: running command from arguments"
+    if [ -n "$_STEAM_SEL_DONE" ]
+    then
+        echo "-- $0: stage 2, unsetting _STEAM_SEL_DONE and removing $f"
+        unset _STEAM_SEL_DONE
+        rm "$f"
+    else
+        echo "-- $0: regular steam launch"
+    fi
+    echo "-- $0: running the following command:"
+    echo "env $@"
+    exec env "$@"
+fi
