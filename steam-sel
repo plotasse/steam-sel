@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 import os
-import sys
+import argparse
 import subprocess
 
 from operator import attrgetter
@@ -344,7 +344,7 @@ def get_commands(app_id, get_all=False):
 
     print(app)
     print("  " + setcolor(color_normal) + "Compatibility tool: " + str(compat_tool.app.name if compat_tool else None) \
-            +", Launching as OS:", launch_oslist)
+            +", OS:", launch_oslist)
     print("  Launch options:", repr(launch_options), setcolor(None))
 
     appinfo = appinfo_decoder.decode(app_id)["sections"][b"appinfo"]
@@ -383,34 +383,47 @@ def get_commands(app_id, get_all=False):
         print("Ignored entries with arch: " + repr(ignored_osarch))
 
 if __name__ == "__main__":
-    if len(sys.argv) == 1:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("app_id", type=int, nargs="?",
+            help="Steam AppId of the game to run.")
+    parser.add_argument("config_id", type=int, nargs="?",
+            help="Identifier of the launch config to use.")
+    parser.add_argument("-n", "--dry-run", action="store_true",
+            help="Display the command instead of running it")
+    args = parser.parse_args()
+
+    # Display a list of applications.
+    if args.app_id is None:
         for app in sorted(apps.values(), key=attrgetter("name")):
             print(app)
 
-    elif len(sys.argv) == 2:
-        entries = list(get_commands(int(sys.argv[1])))
+    # Display a list of available configurations.
+    elif args.config_id is None:
+        entries = list(get_commands(args.app_id))
 
         for entry_id, entry in entries:
             print(entry)
 
         #print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
 
-    elif len(sys.argv) == 3:
-        app_id = int(sys.argv[1])
-        launch_id = int(sys.argv[2])
-
-        entries = dict(get_commands(app_id))
-        entry = entries[launch_id]
+    # Run the game.
+    else:
+        entries = dict(get_commands(args.app_id))
+        entry = entries[args.config_id]
 
         print(entry)
 
-        d = BaseDirectory.get_runtime_dir() + "/" + script_name
-        if not os.path.isdir(d):
-            os.mkdir(d)
-        p = d + "/" + str(app_id)
         script = entry.as_bash_script()
-        print(script)
-        with open(p, "w") as f:
-            f.write(script)
-        os.chmod(p, 0o755)
-        subprocess.run(["steam", "-applaunch", str(app_id)])
+
+        if args.dry_run:
+            print(script)
+
+        else:
+            d = BaseDirectory.get_runtime_dir() + "/" + script_name
+            if not os.path.isdir(d):
+                os.mkdir(d)
+            p = d + "/" + str(args.app_id)
+            with open(p, "w") as f:
+                f.write(script)
+            os.chmod(p, 0o755)
+            subprocess.run(["steam", "-applaunch", str(args.app_id)])
