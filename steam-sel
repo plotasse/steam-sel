@@ -288,7 +288,6 @@ class LaunchEntry:
 
     def as_bash_script(self):
         return "\n".join([
-            "#!/bin/bash",
             "cd " + escape_path(self.workingdir),
             "exec env " + self.cmd,
             ''])
@@ -515,5 +514,4 @@ if __name__ == "__main__":
                 p = d + "/" + str(app_id)
                 with open(p, "w") as f:
                     f.write(script)
-                os.chmod(p, 0o755)
                 subprocess.run(["steam", "-applaunch", str(app_id)])
