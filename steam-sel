@@ -385,7 +385,7 @@ def get_commands(app_id, get_all=False):
     ignored_betakey = {}
     ignored_oslist = {}
     ignored_osarch = {}
-    for launch_config_id, launch_config in appinfo[b"config"][b"launch"].items():
+    for launch_config_id, launch_config in appinfo[b"config"].get(b"launch",{}).items():
         launch_entry = LaunchEntry(int(launch_config_id), app, appinfo, launch_config, launch_oslist, compat_tool, launch_options)
 
         # Ignore launch entries associated with beta keys.
@@ -423,10 +423,36 @@ if __name__ == "__main__":
             help="Identifier of the launch config to use. When unspecified, list the available configs for app.")
     parser.add_argument("-n", "--dry-run", action="store_true",
             help="Display the command instead of running it")
+    parser.add_argument("--analyze", action="store_true",
+            help="Analyze all the games and report which are unlaunchable and which have multiple configurations.")
     args = parser.parse_args()
 
+    # Analyze the whole library for unlaunchable and games with multiple config.
+    if (args.analyze):
+        allcmd = [(app_id, list(get_commands(app_id))) for app_id in apps.keys()]
+        l1 = []
+        l2 = []
+        for app_id, cmds in allcmd:
+            if len(cmds) == 0:
+                l1.append((app_id, cmds))
+            if len(cmds) > 1:
+                l2.append((app_id, cmds))
+        print()
+        print("Unlaunchable games")
+        print("------------------")
+        for app_id, cmds in l1:
+            print(apps[app_id])
+        print()
+        print("Games with multiple configurations")
+        print("----------------------------------")
+        for app_id, cmds in l2:
+            print(apps[app_id])
+            for i, c in cmds:
+                print(c)
+            print()
+
     # Display a list of applications.
-    if args.app is None:
+    elif args.app is None:
         for app in sorted(apps.values(), key=attrgetter("name")):
             print(app)
     else:
