@@ -480,11 +480,11 @@ if __name__ == "__main__":
 
         if app_id is None:
             if potential_apps:
-                print(setcolor(color_error) + "ERROR: Game name is ambiguous. The following games were matched:" + setcolor(None))
+                print(setcolor(color_error) + "ERROR: Game name " + repr(args.app) + " is ambiguous. The following games were matched:" + setcolor(None))
                 for app in sorted(potential_apps, key=attrgetter("name")):
                     print(app)
             else:
-                print(setcolor(color_error) + "ERROR: Game was not found." + setcolor(None))
+                print(setcolor(color_error) + "ERROR: Game " + repr(args.app) + " was not found." + setcolor(None))
             exit(1)
 
         # Display a list of available configurations.
