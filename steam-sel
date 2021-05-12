@@ -53,6 +53,7 @@ loader_script_command = loader_script_name
 
 # Output colors
 color_normal = ""
+color_error = "91"
 color_warning = "33"
 color_info = "94"
 color_app_name = "93"
@@ -132,6 +133,7 @@ class App:
             except FileNotFoundError:
                 print(self.app_id, self.name, "is a compatibility tool but has no toolmanifest.vdf")
 
+    # FIXME: __repr__ should not be used this way
     def __repr__(self):
         s = setcolor(color_normal)
         s += "* "
@@ -303,6 +305,7 @@ class LaunchEntry:
                  "cmd": self.cmd,
                  }
 
+    # FIXME: __repr__ should not be used this way
     def __repr__(self):
         def indentr(n, text):
             for i in range(n - len(text)):
@@ -349,13 +352,18 @@ def get_commands(app_id, get_all=False):
         launch_oslist = compat_tool.from_oslist
 
 
-    launch_options = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"][str(app_id)].get("LaunchOptions", "")
+    local_app_config = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"]
+    try:
+        launch_options = local_app_config[str(app_id)]["LaunchOptions"]
+    except KeyError:
+        launch_options = ""
 
     print(app)
     print("  " + setcolor(color_normal) + "Compatibility tool: " + str(compat_tool.app.name if compat_tool else None) \
             +", OS:", launch_oslist)
     print("  Launch options:", repr(launch_options), setcolor(None))
 
+    # TODO: fail on invalid launch options, add command line flag to ignore
     launch_options_suggestion = launch_options
 
     if "%command%" not in launch_options:
@@ -409,46 +417,77 @@ def get_commands(app_id, get_all=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("app_id", type=int, nargs="?",
-            help="Steam AppId of the game to run.")
+    parser.add_argument("app", type=str, nargs="?",
+            help="Steam AppId or name of the game to run. Name matching is case-insensitive and does not require the full name. Without this argument, list the installed games.")
     parser.add_argument("config_id", type=int, nargs="?",
-            help="Identifier of the launch config to use.")
+            help="Identifier of the launch config to use. When unspecified, list the available configs for app.")
     parser.add_argument("-n", "--dry-run", action="store_true",
             help="Display the command instead of running it")
     args = parser.parse_args()
 
     # Display a list of applications.
-    if args.app_id is None:
+    if args.app is None:
         for app in sorted(apps.values(), key=attrgetter("name")):
             print(app)
+    else:
+        app_id = None
+        try:
+            app_id = int(args.app)
+            app = apps[app_id]
+        except ValueError:
+            # try finding the app by name
+            potential_apps = []
+            # first try exact matches
+            for app in apps.values():
+                if args.app.lower() == app.name.lower():
+                    potential_apps.append(app)
+            # then try substrings
+            if len(potential_apps) == 0:
+                for app in apps.values():
+                    if args.app.lower() in app.name.lower():
+                        potential_apps.append(app)
+            if len(potential_apps) == 1:
+                app_id = potential_apps[0].app_id
+        except KeyError:
+            app_id = None
+            potential_apps = None
 
-    # Display a list of available configurations.
-    elif args.config_id is None:
-        entries = list(get_commands(args.app_id))
+        if app_id is None:
+            if potential_apps:
+                print(setcolor(color_error) + "ERROR: Game name is ambiguous. The following games were matched:" + setcolor(None))
+                for app in sorted(potential_apps, key=attrgetter("name")):
+                    print(app)
+            else:
+                print(setcolor(color_error) + "ERROR: Game was not found." + setcolor(None))
+            exit(1)
 
-        for entry_id, entry in entries:
+        # Display a list of available configurations.
+        elif args.config_id is None:
+            entries = list(get_commands(app_id))
+
+            for entry_id, entry in entries:
+                print(entry)
+
+            #print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
+
+        # Run the game.
+        else:
+            entries = dict(get_commands(app_id))
+            entry = entries[args.config_id]
+
             print(entry)
 
-        #print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
+            script = entry.as_bash_script()
 
-    # Run the game.
-    else:
-        entries = dict(get_commands(args.app_id))
-        entry = entries[args.config_id]
+            if args.dry_run:
+                print(script)
 
-        print(entry)
-
-        script = entry.as_bash_script()
-
-        if args.dry_run:
-            print(script)
-
-        else:
-            d = BaseDirectory.get_runtime_dir() + "/" + script_name
-            if not os.path.isdir(d):
-                os.mkdir(d)
-            p = d + "/" + str(args.app_id)
-            with open(p, "w") as f:
-                f.write(script)
-            os.chmod(p, 0o755)
-            subprocess.run(["steam", "-applaunch", str(args.app_id)])
+            else:
+                d = BaseDirectory.get_runtime_dir() + "/" + script_name
+                if not os.path.isdir(d):
+                    os.mkdir(d)
+                p = d + "/" + str(app_id)
+                with open(p, "w") as f:
+                    f.write(script)
+                os.chmod(p, 0o755)
+                subprocess.run(["steam", "-applaunch", str(app_id)])
