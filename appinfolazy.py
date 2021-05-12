@@ -93,7 +93,6 @@ class AppinfoLazyDecoder:
 
     def decode(self, app_id):
         if app_id not in self.parsed:
-            print("\033[32m++ AppinfoLazyDecoder: parsing", app_id,"\033[0m")
             app = self.app_headers[app_id]
             self.offset = self.app_offsets[app_id]
             # The newest VDF format is a bit simpler to parse.
@@ -118,8 +117,6 @@ class AppinfoLazyDecoder:
                     app['sections'][section_name][b'__steamfiles_section_id'] = section_id
 
             self.parsed[app_id] = app
-        else:
-            print("\033[34m++ AppinfoLazyDecoder: retrieving", app_id,"\033[0m")
 
         return self.parsed[app_id]
 

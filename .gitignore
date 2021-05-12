@@ -1,3 +1,2 @@
 __pycache__
-*.vdf
-out*.json
+appinfo\.json

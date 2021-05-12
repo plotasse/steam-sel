@@ -44,6 +44,11 @@ steam_user_id = None
 # for storing temporary files. It must be the same in the corresponding loader script.
 script_name = "steam-sel"
 
+# Output colors
+color_normal = ""
+color_app_name = "93"
+color_config_name = "92"
+
 #
 # END CONFIGURATION
 #
@@ -52,6 +57,9 @@ script_name = "steam-sel"
 # so I guess we will have to do the same. I'm deeply sorry.
 def escape_path(path):
     return "'" + path.replace("'","'\\''") + "'"
+
+def setcolor(color):
+    return "\033[" + ("0;" + str(color) if color is not None else "0") + "m"
 
 apps = {}
 
@@ -63,7 +71,6 @@ if steam_user_id is None:
         if int(userdata["MostRecent"]) == 1:
             # also we have to remove the higher 32 bits, for some reason
             steam_user_id = int(userid) & (1 << 32) - 1
-            print(userid, userdata)
 
 print("steam_user_id =", steam_user_id)
 if type(steam_user_id) is not int:
@@ -93,8 +100,6 @@ for name, data in compat_tools_info.items():
     compat_appid_to_name[appid] = name
     compat_name_to_appid[name] = appid
 
-print(compat_appid_to_name)
-
 def get_compat_tool_appinfo(name):
     return compat_tools_info[name.encode()]
 
@@ -119,7 +124,14 @@ class App:
                 print(self.appid, self.name, "is a compatibility tool but has no toolmanifest.vdf")
 
     def __repr__(self):
-        return "\033[35m * \033[33m" + self.name + "\033[35m (" + str(self.appid) + "), " + self.installdir + "\033[0m"
+        s = setcolor(color_normal)
+        s += "* "
+        s += setcolor(color_app_name)
+        s += self.name
+        s += setcolor(color_normal)
+        s += " (" + str(self.appid) + "), " + self.installdir
+        s += setcolor(None)
+        return s
 
 class CompatTool:
     def __init__(self, app):
@@ -163,7 +175,7 @@ try:
 except FileNotFoundError:
     print("libraryfolders.vdf not found")
 
-print(libraries)
+print("Detected libraries:",libraries)
 
 manifest_re = re.compile("^appmanifest_([0-9]+)\\.acf$")
 for l in libraries:
@@ -174,12 +186,11 @@ for l in libraries:
             appid = int(m.group(1))
             apps[appid] = App(steamapps, appid)
 
+l = []
 for appid, app in apps.items():
     if app.compat_tool:
-        print("Found compatibility tool:", app)
-
-for app in sorted(apps.values(), key=attrgetter("name")):
-    print(app)
+        l.append(app.name)
+print("Compatibility tools:", l)
 
 def get_compat_tool_name_for_app(appid):
     try:
@@ -193,9 +204,11 @@ class LaunchEntry:
     def __init__(self, entry_id, app, appinfo, launch_config, launch_oslist, compat_tool=None, launch_options = None):
         self.id = entry_id
 
+        self.app = app
+
         self.type = launch_config[b"type"].decode() if b"type" in launch_config else "none"
 
-        self.description = launch_config[b"description"].decode() if b"description" in launch_config else app.name
+        self.description = launch_config[b"description"].decode() if b"description" in launch_config else self.app.name
 
         # Get the OS list from the launch config, if unavailable default to the app's.
         try:
@@ -237,17 +250,20 @@ class LaunchEntry:
 
         # Prepend the app install dir to the working dir, and default to it.
         if self.workingdir:
-            self.workingdir = app.installdir + "/" + self.workingdir
+            self.workingdir = self.app.installdir + "/" + self.workingdir
         else:
-            self.workingdir = app.installdir
+            self.workingdir = self.app.installdir
 
         # Build the command.
-        self.cmd = escape_path(app.installdir + "/" + self.executable)
+        self.cmd = escape_path(self.app.installdir + "/" + self.executable)
 
         # It seems we have to escape the backslashes.
         # I would like that to be the last stealth idiocy I have to deal with.
         if b"arguments" in launch_config:
-            self.cmd += " " + launch_config[b"arguments"].decode().replace("\\","\\\\")
+            self.arguments = launch_config[b"arguments"].decode().replace("\\","\\\\")
+            self.cmd += " " + self.arguments
+        else:
+            self.arguments = None
 
         # I have no idea what other verbs there may be. Steam seems to only use this one.
         if compat_tool:
@@ -272,8 +288,33 @@ class LaunchEntry:
                  }
 
     def __repr__(self):
-        return self.id
-        #return repr(self.as_dict())
+        def indentr(n, text):
+            for i in range(n - len(text)):
+                text += " "
+            return text
+        def indentl(n, text):
+            spaces = ""
+            for i in range(n - len(text)):
+                spaces += " "
+            return spaces + text
+
+        reprwd = self.workingdir
+        if reprwd.startswith(self.app.installdir):
+            reprwd = reprwd[len(self.app.installdir):]
+        if reprwd == "":
+            reprwd = "."
+
+        s = setcolor(color_normal)
+        s += indentl(3,str(self.id)) + " "
+        s += setcolor(color_config_name)
+        s += self.description
+        s += setcolor(color_normal)
+        s += " (" + self.type + ")\n"
+        s += " " * 4 + "wd=" + reprwd + ",exe=" + self.executable
+        s += ",args=" + (self.arguments or "") 
+        s += setcolor(None)
+        return s
+                #+ " " * 4 + "oslist=" + repr(self.oslist) + ",osarch=" + repr(self.osarch) + ",betakey=" + repr(self.betakey) + "\n" \
 
 def get_commands(appid, get_all=False):
     app = apps[appid]
@@ -282,8 +323,6 @@ def get_commands(appid, get_all=False):
     compat_appid = compat_name_to_appid.get(compat_name)
     compat_tool = apps[compat_appid].compat_tool if compat_appid else None
 
-    print(app)
-    print(compat_name)
 
     launch_oslist = {current_os}
     if compat_tool:
@@ -292,10 +331,14 @@ def get_commands(appid, get_all=False):
 
         launch_oslist = compat_tool.from_oslist
 
-    print("! launch_oslist =", launch_oslist)
 
     launch_options = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"][str(appid)].get("LaunchOptions")
-    print("Launch options:", repr(launch_options))
+
+    print(app)
+    print("  " + setcolor(color_normal) + "Compatibility tool: " + str(compat_tool.app.name if compat_tool else None) \
+            +", Launching as OS:", launch_oslist)
+    print("  Launch options:", repr(launch_options), setcolor(None))
+
     appinfo = appinfo_decoder.decode(appid)["sections"][b"appinfo"]
 
     ignored_betakey = {}
@@ -332,12 +375,17 @@ def get_commands(appid, get_all=False):
         print("Ignored entries with arch: " + repr(ignored_osarch))
 
 if __name__ == "__main__":
-    if len(sys.argv) == 2:
-        entries = get_commands(int(sys.argv[1]))
-        print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
+    if len(sys.argv) == 1:
+        for app in sorted(apps.values(), key=attrgetter("name")):
+            print(app)
+
+    elif len(sys.argv) == 2:
+        entries = list(get_commands(int(sys.argv[1])))
 
         for entry_id, entry in entries:
             print(entry)
+
+        print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
 
     elif len(sys.argv) == 3:
         appid = int(sys.argv[1])

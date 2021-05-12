@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
-#from steamfiles import appinfo
-import appinfo2
+from steamfiles import appinfo
 import binascii
 import json
+from xdg import BaseDirectory
 
 def decode(d):
     o = {}
@@ -24,7 +24,7 @@ def decode(d):
         o[k] = v
     return o
 
-with open("appinfo.vdf","rb") as f:
-    d = appinfo2.load(f)
+with open(BaseDirectory.xdg_data_home + "/Steam/appcache/appinfo.vdf","rb") as f:
+    d = appinfo.load(f)
 
 print(json.dumps(decode(d)))
