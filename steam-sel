@@ -44,8 +44,17 @@ steam_user_id = None
 # for storing temporary files. It must be the same in the corresponding loader script.
 script_name = "steam-sel"
 
+# This is the loader script name.
+loader_script_name = script_name + "-loader"
+
+# This is the loader script command. This should be included in the launch options.
+# If the script is not in your path, you may want to set this to its absolute path.
+loader_script_command = loader_script_name
+
 # Output colors
 color_normal = ""
+color_warning = "33"
+color_info = "94"
 color_app_name = "93"
 color_config_name = "92"
 
@@ -340,12 +349,28 @@ def get_commands(app_id, get_all=False):
         launch_oslist = compat_tool.from_oslist
 
 
-    launch_options = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"][str(app_id)].get("LaunchOptions")
+    launch_options = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"][str(app_id)].get("LaunchOptions", "")
 
     print(app)
     print("  " + setcolor(color_normal) + "Compatibility tool: " + str(compat_tool.app.name if compat_tool else None) \
             +", OS:", launch_oslist)
     print("  Launch options:", repr(launch_options), setcolor(None))
+
+    launch_options_suggestion = launch_options
+
+    if "%command%" not in launch_options:
+        if launch_options_suggestion:
+            launch_options_suggestion = "%command% " + launch_options_suggestion
+        else:
+            launch_options_suggestion = "%command%"
+        print(setcolor(color_warning) + "WARNING: Launch options do not contain %command%, override may not work." + setcolor(None))
+
+    if loader_script_command not in launch_options:
+        launch_options_suggestion = loader_script_command + " " + launch_options_suggestion
+        print(setcolor(color_warning) + "WARNING: Launch options do not contain " + repr(loader_script_name) + ", override may not work." + setcolor(None))
+
+    if launch_options_suggestion != launch_options:
+        print(setcolor(color_info) + "NOTE: You may want to set your launch options to " + repr(launch_options_suggestion) + "." + setcolor(None))
 
     appinfo = appinfo_decoder.decode(app_id)["sections"][b"appinfo"]
 
