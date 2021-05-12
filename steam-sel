@@ -275,6 +275,13 @@ class LaunchEntry:
             else:
                 self.cmd = self.cmd + " " + launch_options
 
+    def as_bash_script(self):
+        return "\n".join([
+            "#!/bin/bash",
+            "cd " + escape_path(self.workingdir),
+            self.cmd,
+            ''])
+
     def as_dict(self):
         return { "id": self.id,
                  "type": self.type,
@@ -299,19 +306,20 @@ class LaunchEntry:
             return spaces + text
 
         reprwd = self.workingdir
-        if reprwd.startswith(self.app.installdir):
-            reprwd = reprwd[len(self.app.installdir):]
-        if reprwd == "":
+        if reprwd == self.app.installdir:
             reprwd = "."
+        elif reprwd.startswith(self.app.installdir + "/"):
+            reprwd = reprwd[len(self.app.installdir) + 1:]
 
         s = setcolor(color_normal)
-        s += indentl(3,str(self.id)) + " "
+        s += indentl(6,"[" + str(self.id) + "] ")
         s += setcolor(color_config_name)
         s += self.description
         s += setcolor(color_normal)
-        s += " (" + self.type + ")\n"
-        s += " " * 4 + "wd=" + reprwd + ",exe=" + self.executable
-        s += ",args=" + (self.arguments or "") 
+        s += " | " + self.type + "\n"
+        s += " " * 6 + "pwd=" + reprwd + "\n"
+        s += " " * 6 + "exe=" + self.executable + "\n"
+        s += " " * 6 + "args=" + (self.arguments or "")
         s += setcolor(None)
         return s
                 #+ " " * 4 + "oslist=" + repr(self.oslist) + ",osarch=" + repr(self.osarch) + ",betakey=" + repr(self.betakey) + "\n" \
@@ -385,7 +393,7 @@ if __name__ == "__main__":
         for entry_id, entry in entries:
             print(entry)
 
-        print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
+        #print(json.dumps(dict([(k, v.as_dict()) for k,v in entries])))
 
     elif len(sys.argv) == 3:
         appid = int(sys.argv[1])
@@ -394,17 +402,15 @@ if __name__ == "__main__":
         entries = dict(get_commands(appid))
         entry = entries[launch_id]
 
-        print(json.dumps(entry.as_dict()))
+        print(entry)
 
         d = BaseDirectory.get_runtime_dir() + "/" + script_name
         if not os.path.isdir(d):
             os.mkdir(d)
         p = d + "/" + str(appid)
+        script = entry.as_bash_script()
+        print(script)
         with open(p, "w") as f:
-            f.write("\n".join([
-                "#!/bin/bash",
-                "cd " + escape_path(entry.workingdir),
-                entry.cmd,
-                '']))
+            f.write(script)
         os.chmod(p, 0o755)
-        #subprocess.run(["steam", "-applaunch", str(appid)])
+        subprocess.run(["steam", "-applaunch", str(appid)])
