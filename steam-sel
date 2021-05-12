@@ -416,10 +416,10 @@ def get_commands(app_id, get_all=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("app", type=str, nargs="?",
+    parser.add_argument("app", nargs="?",
             help="Steam AppId or name of the game to run. Name matching is case-insensitive and does not require the full name. Without this argument, list the installed games.")
-    parser.add_argument("config_id", type=int, nargs="?",
-            help="Identifier of the launch config to use. When unspecified, list the available configs for app.")
+    parser.add_argument("config", nargs="?",
+            help="Identifier of the launch config to use. Can be a numeric index or a type (default, server, config,…). When unspecified, list the available configs for app.")
     parser.add_argument("-n", "--dry-run", action="store_true",
             help="Display the command instead of running it")
     parser.add_argument("--analyze", action="store_true",
@@ -482,12 +482,13 @@ if __name__ == "__main__":
                 print(setcolor(color_error) + "ERROR: Game name " + repr(args.app) + " is ambiguous. The following games were matched:" + setcolor(None))
                 for app in sorted(potential_apps, key=attrgetter("name")):
                     print(app)
+                print(setcolor(color_error) + "ERROR: Please be more specific or use the AppId." + setcolor(None))
             else:
                 print(setcolor(color_error) + "ERROR: Game " + repr(args.app) + " was not found." + setcolor(None))
             exit(1)
 
         # Display a list of available configurations.
-        elif args.config_id is None:
+        elif args.config is None:
             entries = list(get_commands(app_id))
 
             for entry_id, entry in entries:
@@ -498,7 +499,26 @@ if __name__ == "__main__":
         # Run the game.
         else:
             entries = dict(get_commands(app_id))
-            entry = entries[args.config_id]
+
+            try:
+                # Try by config ID.
+                entry = entries[int(args.config)]
+            except ValueError:
+                # Try finding by type
+                candidates = []
+                for e in entries.values():
+                    if e.type == args.config:
+                        candidates.append(e)
+                if len(candidates) == 0:
+                    print(setcolor(color_error) + "ERROR: Config " + repr(args.config) + " was not found." + setcolor(None))
+                    exit(1)
+                if len(candidates) > 1:
+                    print(setcolor(color_error) + "ERROR: Config type " + repr(args.config) + " is ambiguous. The following configs were matched:" + setcolor(None))
+                    for c in candidates:
+                        print(c)
+                    print(setcolor(color_error) + "ERROR: Please use the numeric identifier instead." + setcolor(None))
+                    exit(1)
+                entry = candidates[0]
 
             print(entry)
 
