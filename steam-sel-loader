@@ -26,6 +26,6 @@ then
     eval "$script"
 else
     echo "-- $0: running command from arguments:"
-    echo "env $@"
-    exec env "$@"
+    echo exec sh -c "$(printf ' %q' "$@")"
+    exec sh -c "$(printf ' %q' "$@")"
 fi

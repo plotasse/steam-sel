@@ -65,8 +65,8 @@ color_config_name = "92"
 
 # This is horrendous, but Steam apparently behaves this way,
 # so I guess we will have to do the same. I'm deeply sorry.
-def escape_path(path):
-    return "'" + path.replace("'","'\\''") + "'"
+def bash_escape(thing):
+    return "'" + thing.replace("'","'\\''") + "'"
 
 def setcolor(color):
     return "\033[" + ("0;" + str(color) if color is not None else "0") + "m"
@@ -162,7 +162,7 @@ class CompatTool:
         self.to_oslist = parse_oslist(compat_appinfo[b"to_oslist"].decode())
 
     def get_command(self, verb, cmd):
-        cmd = escape_path(self.app.installdir) + self.commandline.replace("%verb%", verb) + " " + cmd
+        cmd = bash_escape(self.app.installdir) + self.commandline.replace("%verb%", verb) + " " + cmd
         # FIXME ? compatibility tool stacking ignores the lower {from,to}_oslist.
         # Then again, I have no idea if Steam itself even cares.
         if self.require_tool_app_id:
@@ -266,7 +266,7 @@ class LaunchEntry:
             self.workingdir = self.app.installdir
 
         # Build the command.
-        self.cmd = escape_path(self.app.installdir + "/" + self.executable)
+        self.cmd = bash_escape(self.app.installdir + "/" + self.executable)
 
         # It seems we have to escape the backslashes.
         # I would like that to be the last stealth idiocy I have to deal with.
@@ -288,8 +288,8 @@ class LaunchEntry:
 
     def as_bash_script(self):
         return "\n".join([
-            "cd " + escape_path(self.workingdir),
-            "exec env " + self.cmd,
+            "cd " + bash_escape(self.workingdir),
+            "exec sh -c " + bash_escape(self.cmd),
             ''])
 
     def as_dict(self):
