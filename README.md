@@ -34,16 +34,31 @@ startup command. Or your favorite game devs do. Whatever, you've been warned.
   mess until I get around to making this installable. 
 
 ## Usage
-- Run `./steam-sel.py` to see a list of your games.
-- Run `./steam-sel.py <appid>` to view the available options for a specific game.
-- Run `./steam-sel.py <appid> <launch entry id>` to run your desired command
+- Run `./steam-sel` to see a list of your games.
+- Run `./steam-sel <appid>` to view the available options for a specific game.
+- Run `./steam-sel <appid> <launch entry id>` to run your desired command
   thing.  Make sure to have `steam-sel-loader` in the launch options for the
   game as specified above.
-
 - If nothing works, feel free to ask me. Not sure I'll be of a great help but whatever.
+- Here is the built-in help:
+```text
+usage: steam-sel [-h] [-n] [--analyze] [app] [config]
 
-- Also the CLI should be better some day if I keep working on this.
-  Sorry for the ugliness. Hint: `./steam-sel.py <appid> | tail -n 1 | jq`.
+positional arguments:
+  app            Steam AppId or name of the game to run. Name matching is
+                 case-insensitive and does not require the full name. Without
+                 this argument, list the installed games.
+  config         Identifier of the launch config to use. Can be a numeric
+                 index or a type (default, server, config,…). When
+                 unspecified, list the available configs for app.
+
+optional arguments:
+  -h, --help     show this help message and exit
+  -n, --dry-run  Display the command instead of running it
+  --analyze      Analyze all the games and report which are unlaunchable and
+                 which have multiple configurations.
+```
+
 
 ## How this works
 
