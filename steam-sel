@@ -359,7 +359,7 @@ def get_commands(app_id, get_all=False):
     # If other keys have case sensitivity issue, maybe we'll seek a proper workaround.
     try:
         local_app_config = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"]
-    except:
+    except KeyError:
         local_app_config = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["apps"]
 
     try:
