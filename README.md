@@ -17,7 +17,7 @@ startup command. Or your favorite game devs do. Whatever, you've been warned.
 
 ## Install
 
-- Put steam-sel-loader in your path, and add it to the launch options for the
+- Put steam-sel-loader in your PATH, and add it to the launch options for the
   games you want to run with it.
   * If you have no launch option for the game, the line is `steam-sel-loader
     %command%`. 
@@ -28,10 +28,10 @@ startup command. Or your favorite game devs do. Whatever, you've been warned.
 - Python dependencies
   * this thing https://github.com/ValvePython/vdf (AUR: python-vdf)
   * this one here https://freedesktop.org/wiki/Software/pyxdg/ (Arch: python-pyxdg)
-  * Good luck !
 
-- No, seriously, I have no idea how to use setup tools so (don't) enjoy this
-  mess until I get around to making this installable. 
+- I have no idea how to use setup tools so (don't) enjoy this mess until I get
+  around to making this installable. It seems a symbolic link from somewhere in your
+  PATH to `steam-sel` in the cloned repository does work.
 
 ## Usage
 - Run `./steam-sel` to see a list of your games.
@@ -79,17 +79,11 @@ optional arguments:
   passed by Steam.
 
 - This does not override any compatibility tool and tries to behave exactly as
-  Steam would if you had chosen the other option. If running, e.g. a game through
-  proton without the compatibility options set, Steam will not provide the
-  necessary environment variables and whatever the Valve devs had flying through
-  their minds when designing this.
+  Steam would normally do. If you were to run a game through proton without the
+  compatibility options set, Steam would not provide the necessary environment
+  variables and whatever the Valve devs had flying through their minds when
+  designing this.
 
 - The idea could probably be expanded upon to provide custom commands and whatnot.
 
 - Also it should not conflict with your other launch options, whatever, enjoy.
-
-## What about the stupid name
-
-Maybe it means Steam External Launcher. Or maybe it's just the french for salt
-because I might be salty for having to write 500 lines of code to run a game
-without using the mouse.
