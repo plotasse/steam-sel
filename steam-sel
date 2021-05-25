@@ -355,7 +355,13 @@ def get_commands(app_id, get_all=False):
         launch_oslist = compat_tool.from_oslist
 
 
-    local_app_config = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"]
+    # Sometimes it's Apps, sometimes it's apps.
+    # If other keys have case sensitivity issue, maybe we'll seek a proper workaround.
+    try:
+        local_app_config = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["Apps"]
+    except:
+        local_app_config = user_config["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["apps"]
+
     try:
         launch_options = local_app_config[str(app_id)]["LaunchOptions"]
     except KeyError:
