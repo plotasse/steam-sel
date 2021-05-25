@@ -221,11 +221,15 @@ class LaunchEntry:
 
         self.description = launch_config[b"description"].decode() if b"description" in launch_config else self.app.name
 
-        # Get the OS list from the launch config, if unavailable default to the app's.
+        # Get the OS list from the launch config, if unavailable default to the app's,
+        # if still unavailable it probably is windows-only.
         try:
             self.oslist = parse_oslist(launch_config[b"config"][b"oslist"].decode())
         except KeyError:
-            self.oslist = parse_oslist(appinfo[b"common"][b"oslist"].decode())
+            try:
+                self.oslist = parse_oslist(appinfo[b"common"][b"oslist"].decode())
+            except KeyError:
+                self.oslist = {"windows"}
 
         # Same for the architecture.
         try:
