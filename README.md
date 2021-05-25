@@ -1,6 +1,6 @@
-# Some salt for your Steam machine
+# Steam-sel
 
-## Why
+## What is this
 
 Have you ever tried running an alternative option for a game, such as, say, a
 Vulkan version, or a config tool, without going through the Steam UI ? Well,
